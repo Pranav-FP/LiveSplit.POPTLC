@@ -30,6 +30,49 @@ startup
     vars.ActiveQuests = new List<string>();
 
     vars.Helper.AlertLoadless();
+
+    vars.SetTextComponent = (Action<string, string>)((id, text) =>
+	{
+		var textSettings = timer.Layout.Components.Where(x => x.GetType().Name == "TextComponent").Select(x => x.GetType().GetProperty("Settings").GetValue(x, null));
+		var textSetting = textSettings.FirstOrDefault(x => (x.GetType().GetProperty("Text1").GetValue(x, null) as string) == id);
+		if (textSetting == null)
+		{
+		var textComponentAssembly = Assembly.LoadFrom("Components\\LiveSplit.Text.dll");
+		var textComponent = Activator.CreateInstance(textComponentAssembly.GetType("LiveSplit.UI.Components.TextComponent"), timer);
+		timer.Layout.LayoutComponents.Add(new LiveSplit.UI.Components.LayoutComponent("LiveSplit.Text.dll", textComponent as LiveSplit.UI.Components.IComponent));
+
+		textSetting = textComponent.GetType().GetProperty("Settings", BindingFlags.Instance | BindingFlags.Public).GetValue(textComponent, null);
+		textSetting.GetType().GetProperty("Text1").SetValue(textSetting, id);
+		}
+
+		if (textSetting != null)
+		textSetting.GetType().GetProperty("Text2").SetValue(textSetting, text);
+	});
+
+    vars.RemoveTextComponent = (Action<string>)((id) => {
+        int indexToRemove = -1;
+        foreach (dynamic component in timer.Layout.Components) {
+            if (component.GetType().Name == "TextComponent" && System.Text.RegularExpressions.Regex.IsMatch(component.Settings.Text1, id)) {
+                indexToRemove = timer.Layout.Components.ToList().IndexOf(component);
+                break;
+            }
+        }
+        if (indexToRemove != -1) {
+            timer.Layout.LayoutComponents.RemoveAt(indexToRemove);
+        }
+    });
+
+    vars.oldBonusDamageCount = null;
+
+    vars.RemoveAllComponent = (Action<string>)((id) => {
+        for (int index = 0; index < 10; index++) {
+            vars.RemoveTextComponent("BonusType"+index+":");
+            vars.RemoveTextComponent("AttackType"+index+":");
+            vars.RemoveTextComponent("BonusDamage"+index+":");
+            vars.RemoveTextComponent("BonusCondition"+index+":");
+            vars.RemoveTextComponent("Amulet"+index+":");
+        }
+    });
 }
 
 init
@@ -164,6 +207,8 @@ init
         var LM = mono["Alkawa.Gameplay", "LootManager", 1];
         var LI = mono["Alkawa.Engine", "LevelInstance"];
         var LD = mono["Alkawa.Engine", "LevelData", 1];
+        var PSOKSI = mono["Alkawa.Gameplay", "PlayerStoneOfKnowledgeStateInfo"];
+        var SDBD = mono["Alkawa.Gameplay", "StoneDamageBonusData"];
 
         vars.Helper["level"] = LM.MakeString(
             "m_instance",
@@ -178,6 +223,23 @@ init
             LI["m_levelData"] + PAD,
             LD["m_shortPrettyName"] + PAD
         );
+
+        vars.Helper["bonusDamage"] = LM.MakeList<IntPtr>(
+            "m_instance",
+            LM["m_playerStoneOfKnowledgeStateInfo"] + PAD,
+            PSOKSI["m_bonusDatas"] + PAD
+        );
+
+        vars.ReadBonusData = (Func<IntPtr, dynamic>)(bonusData =>
+        {
+            dynamic ret = new ExpandoObject();
+            ret.BonusType = vars.Helper.Read<int>(bonusData + SDBD["m_attackBonusType"] + PAD);
+            ret.AttackType = vars.Helper.Read<int>(bonusData + SDBD["m_attackType"] + PAD);
+            ret.Bonus = vars.Helper.Read<int>(bonusData + SDBD["m_bonus"] + PAD);
+            ret.BonusCondition = vars.Helper.Read<int>(bonusData + SDBD["m_condition"] + PAD);
+            ret.Amulet = vars.Helper.Read<int>(bonusData + SDBD["m_stone"] + PAD);
+            return ret;
+        });
 
 
         var UIM = mono["Alkawa.Gameplay", "UIManager", 1];
@@ -262,7 +324,7 @@ init
 
 update
 {
-	current.activeScene = vars.Helper.Scenes.Active.Name ?? current.activeScene;
+    current.activeScene = vars.Helper.Scenes.Active.Name ?? current.activeScene;
     vars.Watch(old, current, "activeScene");
     vars.Watch(old, current, "level");
     vars.Watch(old, current, "shortLevel");
@@ -373,8 +435,32 @@ isLoading
         || vars.states.Contains("GameFlowStateLoading");
 }
 
+onReset
+{
+    for (int index = 0; index < current.bonusDamage.Count; index++) {
+        vars.RemoveTextComponent("BonusType"+index+":");
+        vars.RemoveTextComponent("AttackType"+index+":");
+        vars.RemoveTextComponent("BonusDamage"+index+":");
+        vars.RemoveTextComponent("BonusCondition"+index+":");
+        vars.RemoveTextComponent("Amulet"+index+":");
+    }
+}
+
 split
 {
+    if (current.bonusDamage.Count != vars.oldBonusDamageCount) {
+        vars.RemoveAllComponent("");
+    }
+    for (int index = 0; index < current.bonusDamage.Count; index++) {
+        var bonusData = vars.ReadBonusData(current.bonusDamage[index]);
+        vars.SetTextComponent("BonusType"+index+":", bonusData.BonusType.ToString());
+        vars.SetTextComponent("AttackType"+index+":", bonusData.AttackType.ToString());
+        vars.SetTextComponent("BonusDamage"+index+":", bonusData.Bonus.ToString());
+        vars.SetTextComponent("BonusCondition"+index+":", bonusData.BonusCondition.ToString());
+        vars.SetTextComponent("Amulet"+index+":", bonusData.Amulet.ToString());
+
+        vars.oldBonusDamageCount = current.bonusDamage.Count;
+    }
     if (settings["abilites"]) {
         for (int index = 0; index < current.unlockableAbilities.Count; index++) {
             if (vars.CheckIfAbilityUnlocked(current.unlockableAbilities[index]) && vars.CheckSplit("ability__" + index)) {
