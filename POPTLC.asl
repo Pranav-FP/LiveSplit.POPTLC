@@ -121,41 +121,6 @@ init
     vars.states = null;
     current.isChangingLevel = false;
 
-    // hardcoding some offsets which we can't get dynamically
-    var LINKED_LIST_COUNT_OFFSET = 0x18;
-    var LINKED_LIST_HEAD_OFFSET = 0x10;
-    var LINKED_LIST_NODE_NEXT_OFFSET = 0x18;
-    var LINKED_LIST_NODE_VALUE_OFFSET = 0x28;
-    var ARRAY_ELEMENTS_OFFSET = 0x20;
-
-    // not sure if the names are accurate but this is based on what I saw in memory
-    var CLASS_OFFSET = 0x0;
-    var CLASS_NAME_OFFSET = 0x10;
-    
-    vars.GetClassNameOfInstance = (Func<IntPtr, bool, string>)((instance, isDereffed) =>
-    {
-        DeepPointer p;
-
-        if (isDereffed)
-        {
-            p = new DeepPointer(
-                instance + CLASS_OFFSET,
-                CLASS_NAME_OFFSET,
-                0x0
-            );
-        } else {
-            p = new DeepPointer(
-                instance,
-                CLASS_OFFSET,
-                CLASS_NAME_OFFSET,
-                0x0
-            );
-        }
-        
-        // this is an ascii string so can't use the asl-help func
-        return p.DerefString(game, ReadStringType.ASCII, 128);
-    });
-
     vars.Helper.TryLoad = (Func<dynamic, bool>)(mono =>
     {
         // asl-help has this issue where sometimes offsets resolve to 0x10 less than what they are meant to be
